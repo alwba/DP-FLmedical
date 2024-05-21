@@ -387,3 +387,7 @@ def allAggregators():
 # FederatedAveraging and Adaptive Federated Averaging
 def FAandAFA():
     return [FAAggregator, AFAAggregator]
+
+# just FedAvg
+def FA():
+    return [FAAggregator]

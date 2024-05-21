@@ -63,6 +63,70 @@ class Aggregator:
         errors = 1 - 1.0 * mconf.diagonal().sum() / len(testDataset)
         logPrint("Error Rate: ", round(100.0 * errors, 3), "%")
         return errors
+    
+    def _DI_degree(self, mconf_p, mconf_u):
+        # legal threshold for DI is 0.8 or 0.9
+        # as far as I understand it it should be more a how many got positive outcome of the whole --> Zafar
+        # |1-max(TPR_u/TPR_p, TPR_p/TPR_u)|
+        # it is more about the unfavourable outcomes 
+        # so maybe |1-(SR_u/SR_p)| --> where SR is the selection rate meaning how meaning got the undesired outcome from the whole
+        TN_p, FP_p, FN_p, TP_p = mconf_p.ravel()
+        TN_u, FP_u, FN_u, TP_u = mconf_u.ravel()
+
+        PR_p = FP_p + TP_p
+        PR_u = FP_u + TP_u
+        N_p = TN_p + FP_p + FN_p + TP_p
+        N_u = TN_u + FP_u + FN_u + TP_u
+
+        SR_p = PR_p/N_p
+        SR_u = PR_u/N_u
+
+        if SR_p == 0 or SR_u == 0:
+            return 1
+
+        # expecting SR_p being higher...
+        DI_degree = abs(1-SR_u/SR_p)
+
+        return DI_degree
+
+    def _EOP_difference(self, mconf_p, mconf_u):
+        # |TPR_p - TPR_u|
+        TN_p, FP_p, FN_p, TP_p = mconf_p.ravel()
+        TN_u, FP_u, FN_u, TP_u = mconf_u.ravel()
+
+        TPR_p = TP_p/(TP_p + FN_p)
+        TPR_u = TP_u/(TP_u + FN_u)
+
+        EOP_difference = abs(TPR_p - TPR_u)
+
+        return EOP_difference
+
+    def _EODD_difference(self, mconf_p, mconf_u):
+        # 0.5 * (|TPR_p - TPR_u| + |TNR_p - TNR_u|)
+        TN_p, FP_p, FN_p, TP_p = mconf_p.ravel()
+        TN_u, FP_u, FN_u, TP_u = mconf_u.ravel()
+
+        TPR_p = TP_p/(TP_p + FN_p)
+        TPR_u = TP_u/(TP_u + FN_u)
+
+        TNR_p = TN_p/(TN_p + FP_p)
+        TNR_u = TN_u/(TN_u + FP_u)
+
+        EODD_difference = 0.5 * (abs(TPR_p - TPR_u) + abs(TNR_p - TNR_u))
+        
+        return EODD_difference
+
+    def _SP_difference(self, mconf_p, mconf_u):
+        # |((TP_p + FP_p)/N_p) - ((TP_u + FP_u)/N_u)|
+        TN_p, FP_p, FN_p, TP_p = mconf_p.ravel()
+        TN_u, FP_u, FN_u, TP_u = mconf_u.ravel()
+        
+        N_p = TN_p + FP_p + FN_p + TP_p
+        N_u = TN_u + FP_u + FN_u + FN_u
+
+        SP_difference = abs(((TP_p + FP_p)/N_p) - ((TP_u + FP_u)/N_u))
+        
+        return SP_difference
 
     # Function for computing predictions
     def predict(self, net, x):

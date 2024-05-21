@@ -60,6 +60,32 @@ class Aggregator:
         testLabels = torch.tensor(testLabels, dtype=torch.long)
         # Confusion matrix and normalized confusion matrix
         mconf = confusion_matrix(testLabels, predLabels)
+
+        numOfFeatures = next(iter(dataLoader))[0].shape[1]
+        
+        protectedAttributesList = []
+        if numOfFeatures == 11: # heart dataset
+            age_grouping = [28, 33, 38, 43, 48, 53, 58, 63, 68, 73, 78]
+
+            protectedAttributesList = [
+                {"description": "heart_age", "isBinary": False, "protectedAttributeIndex": 0, "grouping": age_grouping},
+                {"description": "heart_gender", "isBinary": True, "protectedAttributeIndex": 1, "unprivilegedValue": 0},
+            ]
+
+        elif numOfFeatures == 8: # diabetes
+            age_grouping = [16,32,48,64]
+            bmi_grouping = [18.5, 25, 30, 40]
+            pregnancies_grouping = [0,3,6,9,12,15,18]
+
+            protectedAttributesList = [
+                {"description": "diabetes_pregnancies", "isBinary": False, "protectedAttributeIndex": 0, "grouping": pregnancies_grouping},
+                {"description": "diabetes_bmi", "isBinary": False, "protectedAttributeIndex": 5, "grouping": bmi_grouping},
+                {"description": "diabetes_age", "isBinary": False, "protectedAttributeIndex": 7, "grouping": age_grouping},
+            ]
+
+        else:
+            print("no suitable fairness measures...") 
+
         errors = 1 - 1.0 * mconf.diagonal().sum() / len(testDataset)
         logPrint("Error Rate: ", round(100.0 * errors, 3), "%")
         return errors

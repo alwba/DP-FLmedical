@@ -1,8 +1,7 @@
 from torchsummary import summary
 
 from experiment.DefaultExperimentConfiguration import DefaultExperimentConfiguration
-from datasetLoaders.loaders import DatasetLoaderMNIST, DatasetLoaderCOVIDx, DatasetLoaderDiabetes, \
-    DatasetLoaderHeartDisease
+from datasetLoaders.loaders import DatasetLoaderDiabetes, DatasetLoaderHeartDisease
 from classifiers import MNIST, CovidNet, CNN, Diabetes, HeartDisease
 from logger import logPrint
 from client import Client
@@ -17,22 +16,6 @@ import time
 
 import os
 import shutil
-
-def __experimentOnMNIST(config):
-    dataLoader = DatasetLoaderMNIST().getDatasets
-    classifier = MNIST.Classifier
-    __experimentSetup(config, dataLoader, classifier)
-
-
-def __experimentOnCONVIDx(config, model='COVIDNet'):
-    datasetLoader = DatasetLoaderCOVIDx().getDatasets
-    if model == 'COVIDNet':
-        classifier = CovidNet.Classifier
-    elif model == 'resnet18':
-        classifier = CNN.Classifier
-    else:
-        raise Exception("Invalid Covid model name.")
-    __experimentSetup(config, datasetLoader, classifier)
 
 
 def __experimentOnDiabetes(config):
@@ -300,16 +283,54 @@ def withDP_onDiabetes():
 
 @experiment
 def customExperiment():
-    config = DefaultExperimentConfiguration()
-    config.percUsers = torch.tensor([1.])
+    percUsers = torch.tensor([1/3, 1/3, 1/3])
 
-    config.learningRate = 0.0001
-    config.batchSize = 20
-    config.epochs = 10
-    config.rounds = 100
+    # for diabetes:
+    epsilon1 = 0.0001
+    epsilon3 = 0.0001
+    releaseProportion = 0.1
 
-    # config.requireDatasetAnonymization = True
-    __experimentOnDiabetes(config)
+    learningRate = 0.00001
+    batchSize = 10
+    epochs = 5
+    rounds = 50
+
+    # for heart disease
+    # epsilon1 = 0.0001
+    # epsilon3 = 0.0001
+    # releaseProportion = 0.1
+
+    # learningRate = 0.0001
+    # batchSize = 5
+    # epochs = 10
+    # rounds = 100
+
+    DPconfig = DefaultExperimentConfiguration()
+    DPconfig.exp_name = 'customExperiment'
+    DPconfig.Optimizer = torch.optim.Adam
+    DPconfig.aggregators = agg.FA() # just FedAvg
+    DPconfig.learningRate = learningRate
+    DPconfig.batchSize = batchSize
+    DPconfig.epochs = epochs
+    DPconfig.rounds = rounds
+    DPconfig.privacyPreserve = True # DP
+    DPconfig.releaseProportion = releaseProportion
+    DPconfig.epsilon1 = epsilon1
+    DPconfig.epsilon3 = epsilon3
+    DPconfig.needClip = True
+    DPconfig.percUsers = percUsers
+    DPconfig.plotResults = False
+
+    path = 'out/' + DPconfig.exp_name
+    if os.path.exists(path):
+        shutil.rmtree(path)
+    os.makedirs(path)
+
+    #__experimentOnHeartDisease(DPconfig)
+    __experimentOnDiabetes(DPconfig)
 
 
 customExperiment()
+# withAndWithoutDP_onOneAndMultipleClients_onDiabetes()
+# baseline_onHeartDisease()
+# baseline_onDiabetes()

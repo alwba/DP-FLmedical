@@ -211,6 +211,93 @@ def baseline_onDiabetes():
 
         __experimentOnDiabetes(noDPconfig)
 
+
+@experiment
+def withDP_onHeartDisease():
+    # DP experiments with different epsilons
+    # basic config
+    epsilon1 = 0.0001
+    epsilon3 = 0.0001
+    releaseProportion = 0.1
+
+    learningRate = 0.0001
+    batchSize = 5
+    epochs = 10
+    rounds = 100
+
+    noOfClients = {'1': torch.tensor([1.]), '3': torch.tensor([1/3, 1/3, 1/3]), '5': torch.tensor([1/5, 1/5, 1/5, 1/5, 1/5]), '10': torch.tensor([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])}
+    epsilons = [0.0001, 0.1, 1, 10]
+
+    for n, percUsers in noOfClients.items():
+        for e in epsilons:
+            logPrint("DP experiment on heart disease using", n, "clients and epsilon=", e)
+            DPconfig = DefaultExperimentConfiguration()
+            DPconfig.exp_name = 'heartDisease/heartDisease_DP_' + n + '_clients'
+            DPconfig.Optimizer = torch.optim.Adam
+            DPconfig.aggregators = agg.FA()
+            DPconfig.learningRate = learningRate
+            DPconfig.batchSize = batchSize
+            DPconfig.epochs = epochs
+            DPconfig.rounds = rounds
+            DPconfig.percUsers = percUsers
+            
+            DPconfig.privacyPreserve = True
+            DPconfig.releaseProportion = releaseProportion
+            DPconfig.epsilon1 = e
+            DPconfig.epsilon3 = e
+            DPconfig.needClip = True
+            DPconfig.plotResults = False
+
+            path = 'out/' + DPconfig.exp_name
+            if os.path.exists(path):
+                shutil.rmtree(path)
+            os.makedirs(path)
+
+            __experimentOnHeartDisease(DPconfig)
+
+@experiment
+def withDP_onDiabetes():
+    # DP experiments with different epsilons
+    # basic config
+    epsilon1 = 0.0001
+    epsilon3 = 0.0001
+    releaseProportion = 0.1
+
+    learningRate = 0.00001
+    batchSize = 10
+    epochs = 5
+    rounds = 10
+    
+    noOfClients = {'1': torch.tensor([1.]), '3': torch.tensor([1/3, 1/3, 1/3]), '5': torch.tensor([1/5, 1/5, 1/5, 1/5, 1/5]), '10': torch.tensor([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])}
+    epsilons = [0.0001, 0.1, 1, 10]
+
+    for n, percUsers in noOfClients.items():
+        for e in epsilons:
+            logPrint("DP experiment on diabetes using", n, "clients and epsilon=", e)
+            DPconfig = DefaultExperimentConfiguration()
+            DPconfig.exp_name = 'diabetes/diabetes_DP_' + n + '_clients'
+            DPconfig.Optimizer = torch.optim.Adam
+            DPconfig.aggregators = agg.FA()
+            DPconfig.learningRate = learningRate
+            DPconfig.batchSize = batchSize
+            DPconfig.epochs = epochs
+            DPconfig.rounds = rounds
+            DPconfig.percUsers = percUsers
+            
+            DPconfig.privacyPreserve = True
+            DPconfig.releaseProportion = releaseProportion
+            DPconfig.epsilon1 = e
+            DPconfig.epsilon3 = e
+            DPconfig.needClip = True
+            DPconfig.plotResults = False
+
+            path = 'out/' + DPconfig.exp_name
+            if os.path.exists(path):
+                shutil.rmtree(path)
+            os.makedirs(path)
+
+            __experimentOnDiabetes(DPconfig)
+
 @experiment
 def customExperiment():
     config = DefaultExperimentConfiguration()

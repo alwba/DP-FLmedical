@@ -64,6 +64,34 @@ class Aggregator:
         logPrint("Error Rate: ", round(100.0 * errors, 3), "%")
         return errors
     
+    def _measureFairness(self, mconf_p, mconf_u):
+        DI_degree = round(self._DI_degree(mconf_p, mconf_u), 4)
+        EOP_difference = round(self._EOP_difference(mconf_p, mconf_u), 4)
+        EODD_difference = round(self._EODD_difference(mconf_p, mconf_u), 4)
+        SP_difference = round(self._SP_difference(mconf_p, mconf_u), 4)
+
+        logPrint("Disparate Impact: ", DI_degree)
+        logPrint("EOP difference: ", EOP_difference)
+        logPrint("EODD difference: ", EODD_difference)
+        logPrint("SP difference: ", SP_difference)
+
+        return {"DI_degree": DI_degree, "EOP_difference": EOP_difference, "EODD_difference": EODD_difference, "SP_difference": SP_difference}
+
+    def _measurePerformance(self, mconf):
+        tn, fp, fn, tp = mconf.ravel()
+
+        accuracy = round((tp + tn) / (tn + fp + fn + tp), 4)
+        precision = round(tp / (tp + fp), 4)
+        recall = round(tp / (tp + fn), 4)
+        f1 = round(2 * (precision * recall) / (precision + recall), 4)
+
+        logPrint("Accuracy: ", accuracy)
+        logPrint("Precision: ", precision)
+        logPrint("Recall: ", recall)
+        logPrint("F1 Score: ", f1)
+
+        return {"accuracy": accuracy, "precision": precision, "recall": recall, "f1": f1}
+    
     def _DI_degree(self, mconf_p, mconf_u):
         # legal threshold for DI is 0.8 or 0.9
         # as far as I understand it it should be more a how many got positive outcome of the whole --> Zafar

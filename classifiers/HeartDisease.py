@@ -4,7 +4,7 @@ from math import log, ceil
 
 
 class Classifier(nn.Module):
-    defaultInputSize = 14
+    defaultInputSize = 11
     inputSize = None
 
     def __init__(self):

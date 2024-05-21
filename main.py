@@ -15,6 +15,8 @@ import random
 import torch
 import time
 
+import os
+import shutil
 
 def __experimentOnMNIST(config):
     dataLoader = DatasetLoaderMNIST().getDatasets
@@ -83,10 +85,8 @@ def __runExperiment(config, datasetLoader, classifier, aggregator, useDifferenti
     if config.requireDatasetAnonymization:
         classifier.inputSize = testDataset.getInputSize()
     model = classifier().to(config.device)
-    aggregator = aggregator(clients, model, config.rounds, config.device)
-    if isinstance(aggregator, agg.AFAAggregator) and config.xi:
-        aggregator.xi = config.xi
-        aggregator.deltaXi = config.deltaXi
+    aggregator = aggregator(clients, model, config.rounds, config.device, config.exp_name)
+
     return aggregator.trainAndTest(testDataset)
 
 
@@ -1515,6 +1515,66 @@ def withAndWithoutDPandKAnonymization_withAndWithoutByz_3ByzClients_onHeartDisea
 
     __experimentOnHeartDisease(kAnonByzConfig)
 
+
+@experiment
+def baseline_onHeartDisease():
+    # baseline experiments without DP on 1,3,5,10 clients
+    learningRate = 0.0001
+    batchSize = 5
+    epochs = 10
+    rounds = 100
+
+    noOfClients = {'1': torch.tensor([1.]), '3': torch.tensor([1/3, 1/3, 1/3]), '5': torch.tensor([1/5, 1/5, 1/5, 1/5, 1/5]), '10': torch.tensor([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])}
+
+    for n, percUsers in noOfClients.items():
+        logPrint('Baseline experiment on heart disease with', n, 'clients:')
+        noDPconfig = DefaultExperimentConfiguration()#
+        noDPconfig.exp_name = 'heartDisease/heartDisease_baseline_' + n + '_clients'
+        noDPconfig.Optimizer = torch.optim.Adam
+        noDPconfig.aggregators = agg.FA()
+        noDPconfig.learningRate = learningRate
+        noDPconfig.batchSize = batchSize
+        noDPconfig.epochs = epochs
+        noDPconfig.rounds = rounds
+        noDPconfig.percUsers = percUsers
+        noDPconfig.plotResults = False
+
+        path = 'out/' + noDPconfig.exp_name
+        if os.path.exists(path):
+            shutil.rmtree(path)
+        os.makedirs(path)
+
+        __experimentOnHeartDisease(noDPconfig)
+
+@experiment
+def baseline_onDiabetes():
+    # baseline experiments without DP on 1,3,5,10 clients
+    learningRate = 0.00001
+    batchSize = 10
+    epochs = 5
+    rounds = 50
+
+    noOfClients = {'1': torch.tensor([1.]), '3': torch.tensor([1/3, 1/3, 1/3]), '5': torch.tensor([1/5, 1/5, 1/5, 1/5, 1/5]), '10': torch.tensor([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])}
+
+    for n, percUsers in noOfClients.items():
+        logPrint('Baseline experiment on diabetes with ', n, 'clients:')
+        noDPconfig = DefaultExperimentConfiguration()
+        noDPconfig.exp_name = 'diabetes/diabetes_baseline_' + n + '_clients'
+        noDPconfig.Optimizer = torch.optim.Adam
+        noDPconfig.aggregators = agg.FA()
+        noDPconfig.learningRate = learningRate
+        noDPconfig.batchSize = batchSize
+        noDPconfig.epochs = epochs
+        noDPconfig.rounds = rounds
+        noDPconfig.percUsers = percUsers
+        noDPconfig.plotResults = False
+
+        path = 'out/' + noDPconfig.exp_name
+        if os.path.exists(path):
+            shutil.rmtree(path)
+        os.makedirs(path)
+
+        __experimentOnDiabetes(noDPconfig)
 
 @experiment
 def customExperiment():

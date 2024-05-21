@@ -1,22 +1,11 @@
-import os
 import random
 import re
-import sys
-from shutil import copyfile
 
 import cv2
 import numpy as np
 import pandas as pd
-import pydicom as dicom
 import torch
-from PIL import Image
-# import cn.protect.quality as quality
-# from cn.protect.hierarchy import OrderHierarchy
 from torch.utils.data import Dataset
-from torchvision import transforms, datasets
-# from cn.protect import Protect
-# from cn.protect.privacy import KAnonymity
-from functools import reduce
 
 from logger import logPrint
 

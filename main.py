@@ -1,14 +1,11 @@
-from torchsummary import summary
-
 from experiment.DefaultExperimentConfiguration import DefaultExperimentConfiguration
 from datasetLoaders.loaders import DatasetLoaderDiabetes, DatasetLoaderHeartDisease
-from classifiers import MNIST, CovidNet, CNN, Diabetes, HeartDisease
+from classifiers import Diabetes, HeartDisease
 from logger import logPrint
 from client import Client
 import aggregators as agg
 
 import matplotlib.pyplot as plt
-from itertools import product
 import numpy as np
 import random
 import torch

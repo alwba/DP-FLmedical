@@ -7,17 +7,18 @@ from logger import logPrint
 from threading import Thread
 from sklearn.metrics import confusion_matrix
 from torch.utils.data import DataLoader
-
+import csv
 import torch
 
 
 class Aggregator:
-    def __init__(self, clients, model, rounds, device, useAsyncClients=False):
+    def __init__(self, clients, model, rounds, device, exp_name, useAsyncClients=False):
         self.model = model.to(device)
         self.clients = clients
         self.rounds = rounds
 
         self.device = device
+        self.exp_name = exp_name
         self.useAsyncClients = useAsyncClients
 
     def trainAndTest(self, testDataset):
@@ -86,9 +87,108 @@ class Aggregator:
         else:
             print("no suitable fairness measures...") 
 
+        for a in protectedAttributesList:
+            protectedAttributes = np.array([x[0][a["protectedAttributeIndex"]].item() for x,_ in dataLoader])
+
+            if a["isBinary"]:
+                indices_p = np.where(protectedAttributes != a["unprivilegedValue"])[0]
+                indices_u = np.where(protectedAttributes == a["unprivilegedValue"])[0]
+
+                if len(indices_p) == 0 or len(indices_u) == 0:
+                    logPrint("no grouping possible")
+                    continue
+
+                testLabels_p = testLabels[indices_p]
+                testLabels_u = testLabels[indices_u]
+                predLabels_p = predLabels[indices_p]
+                predLabels_u = predLabels[indices_u]
+
+                mconf_p = confusion_matrix(testLabels_p, predLabels_p)
+                mconf_u = confusion_matrix(testLabels_u, predLabels_u)
+
+                logPrint("Fairness measures for", a["description"], "having the unprivileged value of:", a["unprivilegedValue"])
+                fairness_measures = self._measureFairness(mconf_p, mconf_u)
+                logPrint("----- performance measures privileged group -----")
+                performance_measures_p = self._measurePerformance(mconf_p)
+                performance_measures_p = {'p_' + key: value for key, value in performance_measures_p.items()}
+                logPrint("----- performance measures unprivileged group -----")
+                performance_measures_u = self._measurePerformance(mconf_u)
+                performance_measures_u = {'u_' + key: value for key, value in performance_measures_u.items()}
+
+                results = {**fairness_measures, **performance_measures_p, **performance_measures_u}
+
+                self._append_to_csv('out/' + self.exp_name + '/' + a["description"] + '.csv', results)
+                
+            else:
+                grouping = a["grouping"]
+                for i in range(len(grouping) + 1):
+                    filename = ''
+                    if i == 0:
+                        indices_p = np.where(protectedAttributes >= grouping[i])[0]
+                        indices_u = np.where(protectedAttributes < grouping[i])[0]
+                        logPrint("Fairness measures for", a["description"], "having a value of <", grouping[i])
+                        filename = 'out/' + self.exp_name + '/' + a["description"] + '_x<' + str(grouping[i]) + '.csv'
+                    elif i == len(grouping):
+                        indices_p = np.where(protectedAttributes < grouping[i-1])[0]
+                        indices_u = np.where(protectedAttributes >= grouping[i-1])[0]
+                        logPrint("Fairness measures for", a["description"], "having a value >=", grouping[i-1])
+                        filename = 'out/' + self.exp_name + '/' + a["description"] + '_x>=' + str(grouping[i-1]) + '.csv'
+                    else:
+                        indices_p = np.where(np.logical_or(protectedAttributes < grouping[i-1], protectedAttributes >= grouping[i]))[0]
+                        indices_u = np.where(np.logical_and(protectedAttributes >= grouping[i-1], protectedAttributes < grouping[i]))[0]
+                        logPrint("Fairness measures for", a["description"], "having a value >=", grouping[i-1], "and <", grouping[i])
+                        filename = 'out/' + self.exp_name + '/' + a["description"] + '_' + str(grouping[i-1]) + '<=x<' + str(grouping[i]) + '.csv'
+
+                    if len(indices_p) == 0 or len(indices_u) == 0:
+                        logPrint("no grouping possible")
+                        continue
+
+                    testLabels_p = testLabels[indices_p]
+                    testLabels_u = testLabels[indices_u]
+                    predLabels_p = predLabels[indices_p]
+                    predLabels_u = predLabels[indices_u]
+
+                    mconf_p = confusion_matrix(testLabels_p, predLabels_p, labels=[0,1])
+                    mconf_u = confusion_matrix(testLabels_u, predLabels_u, labels=[0,1])
+
+                    fairness_measures = self._measureFairness(mconf_p, mconf_u)
+                    logPrint("----- performance measures privileged group -----")
+                    performance_measures_p = self._measurePerformance(mconf_p)
+                    performance_measures_p = {'p_' + key: value for key, value in performance_measures_p.items()}
+                    logPrint("----- performance measures unprivileged group -----")
+                    performance_measures_u = self._measurePerformance(mconf_u)
+                    performance_measures_u = {'u_' + key: value for key, value in performance_measures_u.items()}
+
+                    results = {**fairness_measures, **performance_measures_p, **performance_measures_u}
+
+                    self._append_to_csv(filename, results)
+
+        logPrint("----- model performance -----")
+        model_performance_measures = self._measurePerformance(mconf)
+        self._append_to_model_performance_csv('out/' + self.exp_name + '/model_performance.csv', model_performance_measures)
         errors = 1 - 1.0 * mconf.diagonal().sum() / len(testDataset)
         logPrint("Error Rate: ", round(100.0 * errors, 3), "%")
         return errors
+    
+    def _append_to_csv(self, path, data):
+        with open(path, 'a', newline='') as file:
+            fieldnames = ['DI_degree', 'EOP_difference', 'EODD_difference', 'SP_difference', 'p_accuracy', 'p_precision', 'p_recall', 'p_f1', 'u_accuracy', 'u_precision', 'u_recall', 'u_f1']
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
+
+            if file.tell() == 0:
+                writer.writeheader()
+
+            writer.writerow({key: data.get(key, '') for key in fieldnames})
+
+    def _append_to_model_performance_csv(self, path, data):
+        with open(path, 'a', newline='') as file:
+            fieldnames = ['accuracy', 'precision', 'recall', 'f1']
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
+
+            if file.tell() == 0:
+                writer.writeheader()
+
+            writer.writerow({key: data.get(key, '') for key in fieldnames})
     
     def _measureFairness(self, mconf_p, mconf_u):
         DI_degree = round(self._DI_degree(mconf_p, mconf_u), 4)

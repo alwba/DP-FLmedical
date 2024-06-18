@@ -327,7 +327,8 @@ def customExperiment():
     __experimentOnDiabetes(DPconfig)
 
 
-customExperiment()
-# withAndWithoutDP_onOneAndMultipleClients_onDiabetes()
+# customExperiment()
 # baseline_onHeartDisease()
 # baseline_onDiabetes()
+withDP_onHeartDisease()
+# withDP_onDiabetes()

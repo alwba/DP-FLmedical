@@ -121,13 +121,12 @@ class Client:
             param.data.copy_(param.data + noise)
 
     # Procedure for implementing differential privacy
-    def __privacyPreserve(self, eps1=100, eps3=100, clipValue=0.1, releaseProportion=0.1,
-                          needClip=False, needNormalization=False):
-        # logPrint("Privacy preserving for client{} in process..".format(self.id))
-
-        gamma = clipValue  # gradient clipping value
+    def __privacyPreserve(self):
+        logPrint("Privacy preserving for client{} in process..".format(self.id))
+        logPrint("epsilon={}".format(self.epsilon1))
+        gamma = self.clipValue  # gradient clipping value
         s = 2 * gamma  # sensitivity
-        Q = releaseProportion  # proportion to release
+        Q = self.releaseProportion  # proportion to release
 
         # The gradients of the model parameters
         paramArr = nn.utils.parameters_to_vector(self.model.parameters())
@@ -142,12 +141,12 @@ class Client:
         paramChanges = (paramArr - untrainedParamArr).detach().to(self.device)
 
         # Normalising
-        if needNormalization:
+        if self.needNormalization:
             paramChanges /= self.n * self.epochs
 
         # Privacy budgets for
-        e1 = eps1  # gradient query
-        e3 = eps3  # answer
+        e1 = self.epsilon1  # gradient query
+        e3 = self.epsilon3  # answer
         e2 = e1 * ((2 * shareParamsNo * s) ** (2 / 3))  # threshold
 
         paramChanges = paramChanges.cpu()
@@ -161,7 +160,7 @@ class Client:
 
         releaseIndex = torch.empty(0).to(self.device)
         while torch.sum(releaseIndex) < shareParamsNo:
-            if needClip:
+            if self.needClip:
                 noisyQuery = abs(clip(paramChanges, -gamma, gamma)) + queryNoise
             else:
                 noisyQuery = abs(paramChanges) + queryNoise
@@ -172,14 +171,14 @@ class Client:
 
         answerNoise = laplace.rvs(scale=(shareParamsNo * s / e3), size=torch.sum(releaseIndex).cpu())
         answerNoise = torch.tensor(answerNoise).to(self.device)
-        if needClip:
+        if self.needClip:
             noisyFilteredChanges = clip(filteredChanges + answerNoise, -gamma, gamma)
         else:
             noisyFilteredChanges = filteredChanges + answerNoise
         noisyFilteredChanges = noisyFilteredChanges.to(self.device)
 
         # Demoralising the noise
-        if needNormalization:
+        if self.needNormalization:
             noisyFilteredChanges *= self.n * self.epochs
 
         # logPrint("Broadcast: {}\t"

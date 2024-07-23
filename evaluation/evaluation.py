@@ -50,8 +50,8 @@ def plotBaselinePerformanceMeasures(performance_values):
 
 
 def _getFairnessValues(fileName):
-    epsilons = [0.0001, 0.1, 1]
-    clients = [1,3,5]
+    epsilons = [1, 10, 100]
+    clients = [3]
 
     fairness_values_averaged = {}
     for e in epsilons:
@@ -97,3 +97,5 @@ def plotFairnessValues(fileName):
 
 
 plotFairnessValues("diabetes_pregnancies_6<=x<9.csv")
+
+# plotBaselinePerformanceMeasures(_getHeartBaselinePerformanceMeasures())

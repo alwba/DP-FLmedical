@@ -82,14 +82,12 @@ def __initClients(config, trainDatasets, useDifferentialPrivacy):
                               batchSize=config.batchSize,
                               learningRate=config.learningRate,
                               p=p0,
-                              alpha=config.alpha,
-                              beta=config.beta,
                               Loss=config.Loss,
                               Optimizer=config.Optimizer,
                               device=config.device,
                               useDifferentialPrivacy=useDifferentialPrivacy,
-                              epsilon1=config.epsilon1,
-                              epsilon3=config.epsilon3,
+                              epsilon=config.epsilon,
+                              delta=config.delta,
                               needClip=config.needClip,
                               clipValue=config.clipValue,
                               needNormalization=config.needNormalization,
@@ -196,6 +194,7 @@ def baseline_onDiabetes():
 def withDP_onHeartDisease():
     # DP experiments with different epsilons
     # basic config
+    delta = 1e-5
     releaseProportion = 0.1
 
     learningRate = 0.0001
@@ -204,7 +203,7 @@ def withDP_onHeartDisease():
     rounds = 100
 
     noOfClients = {'1': torch.tensor([1.]), '3': torch.tensor([1/3, 1/3, 1/3]), '5': torch.tensor([1/5, 1/5, 1/5, 1/5, 1/5]), '10': torch.tensor([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])}
-    epsilons = [0.0001, 0.1, 1, 10]
+    epsilons = [0.1, 1, 10]
 
     for n, percUsers in noOfClients.items():
         for e in epsilons:
@@ -221,8 +220,8 @@ def withDP_onHeartDisease():
             
             DPconfig.privacyPreserve = True
             DPconfig.releaseProportion = releaseProportion
-            DPconfig.epsilon1 = e
-            DPconfig.epsilon3 = e
+            DPconfig.epsilon = e
+            DPconfig.delta = delta
             DPconfig.needClip = True
             DPconfig.plotResults = False
 
@@ -262,8 +261,8 @@ def withDP_onDiabetes():
             
             DPconfig.privacyPreserve = True
             DPconfig.releaseProportion = releaseProportion
-            DPconfig.epsilon1 = e
-            DPconfig.epsilon3 = e
+            DPconfig.epsilon = e
+            DPconfig.delta = 1e-5
             DPconfig.needClip = True
             DPconfig.plotResults = False
 
@@ -276,7 +275,7 @@ def withDP_onDiabetes():
 
 @experiment
 def withDP_onDiabetes_test():
-    releaseProportion = 0.1
+    releaseProportion = 0.3
     clipValue = 0.1
 
     learningRate = 0.00001
@@ -284,8 +283,8 @@ def withDP_onDiabetes_test():
     epochs = 5
     rounds = 50
     
-    noOfClients = {'1': torch.tensor([1.]), '3': torch.tensor([1/3, 1/3, 1/3]), '5': torch.tensor([0.2, 0.2, 0.2, 0.2, 0.2])}#, '10': torch.tensor([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])}
-    epsilons = [0.0001, 0.1, 1]#, 10]
+    noOfClients = {'3': torch.tensor([1/3, 1/3, 1/3])}#, '5': torch.tensor([0.2, 0.2, 0.2, 0.2, 0.2])}#, '10': torch.tensor([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])}
+    epsilons = [0.1, 1, 10, 100]
 
     for n, percUsers in noOfClients.items():
         for e in epsilons:
@@ -302,10 +301,10 @@ def withDP_onDiabetes_test():
             
             DPconfig.privacyPreserve = True
             DPconfig.releaseProportion = releaseProportion
-            DPconfig.epsilon1 = e
-            DPconfig.epsilon3 = e
+            DPconfig.epsilon = e
+            DPconfig.delta = 1e-5
             DPconfig.clipValue = clipValue
-            DPconfig.needClip = False
+            DPconfig.needClip = True
             DPconfig.needNormalization = True
             DPconfig.plotResults = False
 
@@ -321,8 +320,8 @@ def customExperiment():
     percUsers = torch.tensor([1/3, 1/3, 1/3])
 
     # for diabetes:
-    epsilon1 = 0.0001
-    epsilon3 = 0.0001
+    epsilon = 0.0001
+    delta = 1e-5
     releaseProportion = 0.1
 
     learningRate = 0.00001
@@ -331,8 +330,8 @@ def customExperiment():
     rounds = 50
 
     # for heart disease
-    # epsilon1 = 0.0001
-    # epsilon3 = 0.0001
+    # epsilon = 0.0001
+    # delta = 1e-5
     # releaseProportion = 0.1
 
     # learningRate = 0.0001
@@ -350,8 +349,8 @@ def customExperiment():
     DPconfig.rounds = rounds
     DPconfig.privacyPreserve = True # DP
     DPconfig.releaseProportion = releaseProportion
-    DPconfig.epsilon1 = epsilon1
-    DPconfig.epsilon3 = epsilon3
+    DPconfig.epsilon = epsilon
+    DPconfig.delta = delta
     DPconfig.needClip = True
     DPconfig.percUsers = percUsers
     DPconfig.plotResults = False

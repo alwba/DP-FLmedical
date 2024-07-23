@@ -4,6 +4,7 @@ import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import numpy as np
 
 from torch.utils.data import DataLoader
 from numpy import clip, percentile, array, concatenate, empty
@@ -17,8 +18,8 @@ class Client:
     """ An internal representation of a client """
 
     def __init__(self, epochs, batchSize, learningRate, trainDataset, p, idx, useDifferentialPrivacy,
-                 releaseProportion, epsilon1, epsilon3, needClip, clipValue, device, Optimizer, Loss,
-                 needNormalization, byzantine=None, flipping=None, model=None, alpha=3.0, beta=3.0):
+                 releaseProportion, epsilon, delta, needClip, clipValue, device, Optimizer, Loss,
+                 needNormalization, model=None):
 
         self.name = "client" + str(idx)
         self.device = device
@@ -29,8 +30,6 @@ class Client:
         self.n = len(trainDataset)  # Number of training points provided
         self.p = p  # Contribution to the overall model
         self.id = idx  # ID for the user
-        self.byz = byzantine  # Boolean indicating whether the user is faulty or not
-        self.flip = flipping  # Boolean indicating whether the user is malicious or not (label flipping attack)
 
         # Used for computing dW, i.e. the change in model before
         # and after client local training, when DP is used
@@ -48,17 +47,12 @@ class Client:
 
         self.learningRate = learningRate
         self.momentum = 0.9
-
-        # AFA Client params
-        self.alpha = alpha
-        self.beta = beta
-        self.score = alpha / beta
         self.blocked = False
 
         # DP parameters
         self.useDifferentialPrivacy = useDifferentialPrivacy
-        self.epsilon1 = epsilon1
-        self.epsilon3 = epsilon3
+        self.epsilon = epsilon
+        self.delta = delta
         self.needClip = needClip
         self.clipValue = clipValue
         self.needNormalization = needNormalization
@@ -103,27 +97,53 @@ class Client:
 
     # Function used by aggregators to retrieve the model from the client
     def retrieveModel(self):
-        if self.byz:
-            # Malicious model update
-            # logPrint("Malicous update for user ",u.id)
-            self.__manipulateModel()
-
         if self.useDifferentialPrivacy:
-            # self.__privacyPreserve()
-            self.__privacyPreserve()
+            return self.__privacyPreserve()
+        
         return self.model
 
-    # Function to manipulate the model for byzantine adversaries
-    def __manipulateModel(self, alpha=20):
-        params = self.model.named_parameters()
-        for name, param in params:
-            noise = alpha * torch.randn(param.data.size()).to(self.device)
-            param.data.copy_(param.data + noise)
+    def __addGaussianNoise(self, model_update, sensitivity, epsilon, delta):
+        # Calculate the standard deviation of the Gaussian noise
+        sigma = sensitivity * np.sqrt(2 * np.log(1.25 / delta)) / epsilon
+        
+        # Generate Gaussian noise
+        noise = np.random.normal(loc=0, scale=sigma, size=model_update.shape)
+        
+        # Add noise to the model update
+        noisy_update = model_update + noise
+        return noisy_update
+    
+    def __clipModelUpdate(self, model_update, clip_norm):
+        # Compute the L2 norm of the model update
+        norm = np.linalg.norm(model_update)
+        
+        # Clip the model update
+        if norm > clip_norm:
+            model_update = model_update * (clip_norm / norm)
+        
+        return model_update
+    
+    def __privacyPreserve2(self):
+        sensitivity = 1.0  # Sensitivity of the function, assuming each update is normalized
+
+        paramArr = nn.utils.parameters_to_vector(self.model.parameters())
+        untrainedParamArr = nn.utils.parameters_to_vector(self.untrainedModel.parameters())
+
+        paramChanges = (paramArr - untrainedParamArr).detach().to(self.device)
+        logPrint('paramChanges:', paramChanges[:5])
+        clippedParamChanges = self.__clipModelUpdate(paramChanges, 5.0)
+        logPrint('clippedParamChanges:', clippedParamChanges[:5])
+        noisyUpdate = self.__addGaussianNoise(clippedParamChanges, sensitivity, self.epsilon, self.delta)
+        logPrint('noisyUpdate:', noisyUpdate[:5])
+
+        nn.utils.vector_to_parameters(noisyUpdate, self.model.parameters())
+        
+        return self.model.to(self.device)
 
     # Procedure for implementing differential privacy
     def __privacyPreserve(self):
         logPrint("Privacy preserving for client{} in process..".format(self.id))
-        logPrint("epsilon={}".format(self.epsilon1))
+        logPrint("epsilon={}".format(self.epsilon))
         gamma = self.clipValue  # gradient clipping value
         s = 2 * gamma  # sensitivity
         Q = self.releaseProportion  # proportion to release
@@ -145,13 +165,14 @@ class Client:
             paramChanges /= self.n * self.epochs
 
         # Privacy budgets for
-        e1 = self.epsilon1  # gradient query
-        e3 = self.epsilon3  # answer
+        e1 = self.epsilon  # gradient query
+        e3 = self.epsilon  # answer
         e2 = e1 * ((2 * shareParamsNo * s) ** (2 / 3))  # threshold
 
         paramChanges = paramChanges.cpu()
         tau = percentile(abs(paramChanges), Q * 100)
         paramChanges = paramChanges.to(self.device)
+        logPrint(f"Raw gradient magnitude: {torch.norm(paramChanges)}")
         # tau = 0.0001
         noisyThreshold = laplace.rvs(scale=(s / e2)) + tau
 
@@ -161,7 +182,7 @@ class Client:
         releaseIndex = torch.empty(0).to(self.device)
         while torch.sum(releaseIndex) < shareParamsNo:
             if self.needClip:
-                noisyQuery = abs(clip(paramChanges, -gamma, gamma)) + queryNoise
+                noisyQuery = abs(torch.clamp(paramChanges, -gamma, gamma)) + queryNoise
             else:
                 noisyQuery = abs(paramChanges) + queryNoise
             noisyQuery = noisyQuery.to(self.device)
@@ -171,8 +192,12 @@ class Client:
 
         answerNoise = laplace.rvs(scale=(shareParamsNo * s / e3), size=torch.sum(releaseIndex).cpu())
         answerNoise = torch.tensor(answerNoise).to(self.device)
+
+        logPrint(f"Average queryNoise magnitude: {torch.mean(torch.abs(queryNoise))}")
+        logPrint(f"Average answerNoise magnitude: {torch.mean(torch.abs(torch.tensor(answerNoise)))}")
         if self.needClip:
-            noisyFilteredChanges = clip(filteredChanges + answerNoise, -gamma, gamma)
+            noisyFilteredChanges = torch.clamp(filteredChanges + answerNoise, -gamma, gamma)
+            logPrint(f"Clipped gradient magnitude: {torch.norm(noisyFilteredChanges)}")
         else:
             noisyFilteredChanges = filteredChanges + answerNoise
         noisyFilteredChanges = noisyFilteredChanges.to(self.device)
@@ -181,19 +206,24 @@ class Client:
         if self.needNormalization:
             noisyFilteredChanges *= self.n * self.epochs
 
-        # logPrint("Broadcast: {}\t"
-        #          "Trained: {}\t"
-        #          "Released: {}\t"
-        #          "answerNoise: {}\t"
-        #          "ReleasedChange: {}\t"
-        #          "".format(untrainedParamArr[releaseIndex][0],
-        #                    paramArr[releaseIndex][0],
-        #                    untrainedParamArr[releaseIndex][0] + noisyFilteredChanges[0],
-        #                    answerNoise[0],
-        #                    noisyFilteredChanges[0]))
+        logPrint("Broadcast: {}\t"
+                 "Trained: {}\t"
+                 "Released: {}\t"
+                 "answerNoise: {}\t"
+                 "ReleasedChange: {}\t"
+                 "".format(untrainedParamArr[releaseIndex][0],
+                           paramArr[releaseIndex][0],
+                           untrainedParamArr[releaseIndex][0] + noisyFilteredChanges[0],
+                           answerNoise[0],
+                           noisyFilteredChanges[0]))
         # sys.stdout.flush()
+        logPrint(f"Noisy gradient magnitude: {torch.norm(noisyFilteredChanges)}")
 
         paramArr = untrainedParamArr
         paramArr[releaseIndex][:shareParamsNo] += noisyFilteredChanges[:shareParamsNo]
-
+        paramArr = paramArr.to(self.device)
+        logPrint(f"Sample parameter values after update: {paramArr[:5]}")
+        nn.utils.vector_to_parameters(paramArr, self.model.parameters())
+        
+        return self.model.to(self.device)
 

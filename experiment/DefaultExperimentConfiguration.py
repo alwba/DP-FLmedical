@@ -31,8 +31,8 @@ class DefaultExperimentConfiguration:
         # Client privacy preserving module setup
         self.privacyPreserve = False  # if None, run with AND without DP
         self.releaseProportion = 0.1
-        self.epsilon1 = 1
-        self.epsilon3 = 1
+        self.epsilon = 1
+        self.delta = 1e-5
         self.needClip = False
         self.clipValue = 0.001
         self.needNormalization = False

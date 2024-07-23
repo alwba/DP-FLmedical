@@ -34,13 +34,18 @@ class Aggregator:
             for thread in threads:
                 thread.join()
         else:
+            round_loss = 0
             for client in self.clients:
-                self.__shareModelAndTrainOnClient(client)
+                client_loss = self.__shareModelAndTrainOnClient(client)
+                round_loss += client_loss
+            avg_round_loss = round_loss / len(self.clients)
+            return avg_round_loss
 
     def __shareModelAndTrainOnClient(self, client):
         broadcastModel = copy.deepcopy(self.model)
         client.updateModel(broadcastModel)
         error, pred = client.trainModel()
+        return error
 
     def _retrieveClientModelsDict(self):
         models = dict()
@@ -204,6 +209,7 @@ class Aggregator:
 
     def _measurePerformance(self, mconf):
         tn, fp, fn, tp = mconf.ravel()
+        logPrint('TN:', tn, 'FP:', fp, 'FN:', fn, 'TP:', tp)
 
         accuracy = round((tp + tn) / (tn + fp + fn + tp), 4)
         precision = round(tp / (tp + fp), 4)
@@ -289,16 +295,35 @@ class Aggregator:
         return predicted.to(self.device)
 
     # Function to merge the models
+    # @staticmethod
+    # def _mergeModels(mOrig, mDest, alphaOrig, alphaDest):
+    #     paramsDest = mDest.named_parameters()
+    #     dictParamsDest = dict(paramsDest)
+    #     paramsOrig = mOrig.named_parameters()
+    #     for name1, param1 in paramsOrig:
+    #         if name1 in dictParamsDest:
+    #             weightedSum = alphaOrig * param1.data \
+    #                           + alphaDest * dictParamsDest[name1].data
+    #             dictParamsDest[name1].data.copy_(weightedSum)
+
+    # Function to merge the models
     @staticmethod
-    def _mergeModels(mOrig, mDest, alphaOrig, alphaDest):
-        paramsDest = mDest.named_parameters()
-        dictParamsDest = dict(paramsDest)
-        paramsOrig = mOrig.named_parameters()
-        for name1, param1 in paramsOrig:
-            if name1 in dictParamsDest:
-                weightedSum = alphaOrig * param1.data \
-                              + alphaDest * dictParamsDest[name1].data
-                dictParamsDest[name1].data.copy_(weightedSum)
+    def _mergeModels(clientParamsDict, serverModel):
+        # Get the number of clients
+        num_clients = len(clientParamsDict)
+
+        # Initialize a dictionary to hold the accumulated parameters
+        accumulated_params = {name: torch.zeros_like(param) for name, param in serverModel.named_parameters()}
+
+        # Accumulate parameters from all client models
+        for client_model in clientParamsDict.values():
+            for name, param in client_model.named_parameters():
+                accumulated_params[name] += param.data / num_clients
+
+        # Update server model parameters with the averaged parameters
+        for name, param in serverModel.named_parameters():
+            logPrint(f"Global model update for {name}: {torch.mean(torch.abs(param.data - accumulated_params[name]))}")
+            param.data.copy_(accumulated_params[name])
 
 
 # FEDERATED AVERAGING AGGREGATOR
@@ -308,13 +333,14 @@ class FAAggregator(Aggregator):
         roundsError = torch.zeros(self.rounds)
         for r in range(self.rounds):
             logPrint("Round... ", r)
-            self._shareModelAndTrainOnClients()
+            avg_round_loss = self._shareModelAndTrainOnClients()
+            logPrint(f"Round {r}, Average Loss: {avg_round_loss}")
             models = self._retrieveClientModelsDict()
             # Merge models
-            comb = 0.0
-            for client in self.clients:
-                self._mergeModels(models[client].to(self.device), self.model.to(self.device), client.p, comb)
-                comb = 1.0
+            self._mergeModels(models, self.model)
+
+            for name, param in self.model.named_parameters():
+                logPrint(f"{name} - mean: {param.mean()}, std: {param.std()}")
 
             roundsError[r] = self.test(testDataset)
 
